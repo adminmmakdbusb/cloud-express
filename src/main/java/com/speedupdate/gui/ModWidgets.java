@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.function.BooleanSupplier;
@@ -120,8 +121,9 @@ public final class ModWidgets {
             boolean en = enabled.getAsBoolean();
             this.active = en;
             if (en) {
-                // 缩放重载贴整图（裁剪重载会只显示左上角透明区）：10 参 blit
-                g.blit(texture, getX(), getY(), getWidth(), getHeight(), 0f, 0f, texSize, texSize, texSize, texSize);
+                // 1.21.2+：blit 为「RenderType 函数 + 纹理位置」11 参形式（缩放重载贴整图）
+                g.blit(tex -> RenderType.guiTextured(tex), texture, getX(), getY(), getWidth(), getHeight(),
+                        0, 0, texSize, texSize, texSize, texSize);
             }
             if (isHoveredOrFocused() && en) {
                 ModStyle.fillRoundedRect(g, getX(), getY(), getWidth(), getHeight(), getHeight() / 2, ModStyle.BUTTON_HOVER);
