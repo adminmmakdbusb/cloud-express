@@ -11,6 +11,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
@@ -216,8 +217,9 @@ public class UpdateScreen extends Screen {
 
         // 顶栏：模组图标 + 标题 + 本地版本
         try {
-            // 缩放重载：整张 256x256 图标等比缩放到 19x19（裁剪重载会只显示左上角透明区导致镂空图案不可见）
-            g.blit(ICON, panelX + 12, panelY + 9, 19, 19, 0f, 0f, 256, 256, 256, 256);
+            // 1.21.2+：blit 为「RenderType 函数 + 纹理位置」11 参形式（缩放重载：整张 256x256 等比缩放到 19x19）
+            g.blit(icon -> RenderType.guiTextured(icon), ICON, panelX + 12, panelY + 9, 19, 19,
+                    0, 0, 256, 256, 256, 256);
         } catch (Exception ignored) {
             // 图标加载失败（极端情况）时仅显示文字标题，不影响功能
         }
