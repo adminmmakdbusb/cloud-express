@@ -67,6 +67,6 @@ public abstract class TitleScreenMixin extends Screen {
                 ModStyle.BUTTON_BG,
                 () -> UpdateStatus.newVersionAvailable ? ModStyle.GREEN : ModStyle.TEXT,
                 true,
-                () -> Minecraft.getInstance().setScreen(new UpdateScreen()), () -> true));
+                () -> Minecraft.getInstance().setScreenAndShow(new UpdateScreen()), () -> true));
     }
 }

@@ -148,7 +148,7 @@ public class UpdateScreen extends Screen {
 
     /** 引擎状态变化（主线程回调）：刷新按钮可见性；离开对应状态时重置动画/滚动。 */
     private void onEngineStateChanged() {
-        if (this.minecraft != null && this.minecraft.screen == this) {
+        if (this.minecraft != null) {  // 26.2 不暴露当前 Screen；窗口关闭已注销 listener，回调仅存在时到达
             if (engine.phase != Phase.UPDATE_AVAILABLE) {
                 changelogScroll = 0;
             }
