@@ -206,7 +206,6 @@ public class UpdateScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(g, mouseX, mouseY, partialTick);
         // 全屏暗色遮罩（模态感）
         g.fill(0, 0, this.width, this.height, ModStyle.OVERLAY);
 
