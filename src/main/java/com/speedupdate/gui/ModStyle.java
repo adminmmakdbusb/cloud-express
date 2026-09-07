@@ -1,6 +1,6 @@
 package com.speedupdate.gui;
 
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /**
  * 云更新 GUI 视觉规范（颜色 tokens）与通用绘制工具。
@@ -41,7 +41,7 @@ public final class ModStyle {
     /**
      * 圆角矩形填充。四角用逐列近似绘制，radius 建议 3~8，越大越圆。
      */
-    public static void fillRoundedRect(GuiGraphics g, int x, int y, int w, int h, int radius, int color) {
+    public static void fillRoundedRect(GuiGraphicsExtractor g, int x, int y, int w, int h, int radius, int color) {
         if (w <= 0 || h <= 0) {
             return;
         }
@@ -62,7 +62,7 @@ public final class ModStyle {
     /**
      * 面板卡片：1px 描边 + 半透明深色底。
      */
-    public static void drawPanel(GuiGraphics g, int x, int y, int w, int h, int radius) {
+    public static void drawPanel(GuiGraphicsExtractor g, int x, int y, int w, int h, int radius) {
         fillRoundedRect(g, x, y, w, h, radius, PANEL_BORDER);
         fillRoundedRect(g, x + 1, y + 1, w - 2, h - 2, Math.max(1, radius - 1), PANEL_BG);
     }
@@ -70,22 +70,22 @@ public final class ModStyle {
     /**
      * 标题：左侧 3px 强调条 + 主文字。
      */
-    public static void drawTitle(GuiGraphics g, net.minecraft.client.gui.Font font, int x, int y, String title, int accentColor) {
+    public static void drawTitle(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font, int x, int y, String title, int accentColor) {
         fillRoundedRect(g, x, y + 1, 3, font.lineHeight + 2, 2, accentColor);
-        g.drawString(font, title, x + 9, y, TEXT);
+        g.text(font, title, x + 9, y, TEXT);
     }
 
     /**
      * 1px 分隔细线。
      */
-    public static void drawHairline(GuiGraphics g, int x1, int x2, int y) {
+    public static void drawHairline(GuiGraphicsExtractor g, int x1, int x2, int y) {
         g.fill(x1, y, x2, y + 1, DIVIDER);
     }
 
     /**
      * 水平进度条：圆角轨道 + 圆角填充。
      */
-    public static void drawProgressBar(GuiGraphics g, int x, int y, int w, int h, float progress, int fillColor) {
+    public static void drawProgressBar(GuiGraphicsExtractor g, int x, int y, int w, int h, float progress, int fillColor) {
         fillRoundedRect(g, x, y, w, h, h / 2, TRACK_BG);
         int fillW = (int) (w * Math.max(0f, Math.min(1f, progress)));
         if (fillW > 0) {
@@ -96,7 +96,7 @@ public final class ModStyle {
     /**
      * 画一条任意角度的细线（完成勾描边动画用）。pose 旋转 + 细矩形模拟线段。
      */
-    public static void drawLine(GuiGraphics g, float x1, float y1, float x2, float y2, float width, int color) {
+    public static void drawLine(GuiGraphicsExtractor g, float x1, float y1, float x2, float y2, float width, int color) {
         var pose = g.pose();
         pose.pushMatrix();
         pose.translate(x1, y1);
@@ -117,7 +117,7 @@ public final class ModStyle {
      * 请求中旋转加载圈：8 个绕圆点随时间旋转，透明度依次递增形成拖尾。
      * tickMs 传 System.currentTimeMillis()，屏幕每帧渲染自然形成动画。
      */
-    public static void drawSpinner(GuiGraphics g, int cx, int cy, float radius, long tickMs) {
+    public static void drawSpinner(GuiGraphicsExtractor g, int cx, int cy, float radius, long tickMs) {
         float rot = tickMs * 0.006f;
         for (int i = 0; i < 8; i++) {
             float angle = (float) (i * Math.PI / 4) + rot;
@@ -133,7 +133,7 @@ public final class ModStyle {
      * 更新完成描边勾动画（与 UI 预览一致）：先圆环后对勾，t 越界自动钳制；
      * 动画结束后传 t=1 即静态完整图形。size 为 viewBox(52) 的目标边长。
      */
-    public static void drawAnimatedCheck(GuiGraphics g, float cx, float cy, float size, float ringT, float checkT) {
+    public static void drawAnimatedCheck(GuiGraphicsExtractor g, float cx, float cy, float size, float ringT, float checkT) {
         float s = size / 52f;
         float r = 24f * s;
         float w = 2.6f * s;
@@ -173,7 +173,7 @@ public final class ModStyle {
      * 警告图标：红色描边三角形 + 白色感叹号（「修复客户端」确认页用）。
      * 纯原生绘制、无动画；size 为三角形整体高度。
      */
-    public static void drawWarning(GuiGraphics g, float cx, float cy, float size) {
+    public static void drawWarning(GuiGraphicsExtractor g, float cx, float cy, float size) {
         float halfBase = size * 0.62f;
         float topY = cy - size * 0.50f;
         float botY = cy + size * 0.50f;

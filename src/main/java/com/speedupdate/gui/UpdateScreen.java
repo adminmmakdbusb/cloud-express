@@ -8,7 +8,7 @@ import net.minecraft.util.Util;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -205,8 +205,7 @@ public class UpdateScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        this.renderBackground(g, mouseX, mouseY, partialTick);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         // 全屏暗色遮罩（模态感）
         g.fill(0, 0, this.width, this.height, ModStyle.OVERLAY);
 
@@ -221,10 +220,10 @@ public class UpdateScreen extends Screen {
         } catch (Exception ignored) {
             // 图标加载失败（极端情况）时仅显示文字标题，不影响功能
         }
-        g.drawString(font, "更新检查", panelX + 36, panelY + 14, ModStyle.TEXT);
+        g.text(font, "更新检查", panelX + 36, panelY + 14, ModStyle.TEXT);
         String localText = "本地 v" + (engine.localVersion.isEmpty() ? "…" : engine.localVersion);
         int textX = panelX + PANEL_W - 12 - font.width(localText);
-        g.drawString(font, localText, textX, panelY + 14, ModStyle.TEXT_FAINT);
+        g.text(font, localText, textX, panelY + 14, ModStyle.TEXT_FAINT);
         // 「修复客户端」锤子按钮：贴在本地版本号左侧，19x19 与左上 logo 同一水平高度
         repairIconButton.setX(textX - 4 - 19);
         repairIconButton.setY(panelY + 9);
@@ -234,11 +233,11 @@ public class UpdateScreen extends Screen {
 
         // 按钮最后渲染（最上层）
         for (Renderable renderable : this.renderables) {
-            renderable.render(g, mouseX, mouseY, partialTick);
+            renderable.extractRenderState(g, mouseX, mouseY, partialTick);
         }
     }
 
-    private void renderContent(GuiGraphics g, Font font) {
+    private void renderContent(GuiGraphicsExtractor g, Font font) {
         int cx = panelX + PANEL_W / 2;
         int top = panelY + 40;
         // 「修复客户端」确认页（顶栏保留，内容区整体替换；按钮由 widgets 渲染）
@@ -281,24 +280,24 @@ public class UpdateScreen extends Screen {
                         : "模组";
                 int tagW = font.width(tag) + 12;
                 ModStyle.fillRoundedRect(g, x0, y0, tagW, 12, 6, 0x2238BDF8);
-                g.drawString(font, tag, x0 + 6, y0 + 2, ModStyle.ACCENT);
-                g.drawString(font, engine.statusLine.isEmpty() ? "准备中…" : engine.statusLine,
+                g.text(font, tag, x0 + 6, y0 + 2, ModStyle.ACCENT);
+                g.text(font, engine.statusLine.isEmpty() ? "准备中…" : engine.statusLine,
                         x0 + tagW + 6, y0 + 2, ModStyle.TEXT_FAINT);
                 // 标题（紧贴徽标下方）
                 drawBigCentered(g, font, "正在更新...", cx, y0 + 19, ModStyle.TEXT, 1.2f);
                 // 文件行：文件名固定宽度截断；MB 与速度坐标固定不变
                 int fy = y0 + 36;
-                g.drawString(font, trimToWidth(font, engine.currentFile, 135), x0, fy, ModStyle.TEXT_DIM);
+                g.text(font, trimToWidth(font, engine.currentFile, 135), x0, fy, ModStyle.TEXT_DIM);
                 String mbText = fmtSize(engine.currentDownloaded) + " / " + fmtSize(engine.currentTotal);
-                g.drawString(font, mbText, x0 + 142, fy, ModStyle.TEXT);
+                g.text(font, mbText, x0 + 142, fy, ModStyle.TEXT);
                 String spd = fmtSpeed(engine.currentSpeedBps);
-                g.drawString(font, spd, panelX + PANEL_W - 12 - font.width(spd), fy, ModStyle.ACCENT);
+                g.text(font, spd, panelX + PANEL_W - 12 - font.width(spd), fy, ModStyle.ACCENT);
                 // 进度条（贴文件行下方）+ 右侧百分比
                 int barY = fy + 14;
                 int barW = PANEL_W - 24 - 40;
                 ModStyle.drawProgressBar(g, x0, barY, barW, 7, engine.progress, ModStyle.ACCENT);
                 String pct = Math.round(engine.progress * 100) + "%";
-                g.drawString(font, pct, panelX + PANEL_W - 12 - font.width(pct), barY - 1, ModStyle.TEXT_DIM);
+                g.text(font, pct, panelX + PANEL_W - 12 - font.width(pct), barY - 1, ModStyle.TEXT_DIM);
                 // 底部提示
                 drawCentered(g, font, "下载中请勿关闭游戏", cx, barY + 16, ModStyle.TEXT_FAINT);
             }
@@ -322,7 +321,7 @@ public class UpdateScreen extends Screen {
                 List<FormattedCharSequence> lines = font.split(Component.literal(reason), PANEL_W - 40);
                 int y = panelY + 98;
                 for (int i = 0; i < lines.size() && i < 2; i++) {
-                    g.drawCenteredString(font, lines.get(i), cx, y, ModStyle.TEXT);
+                    g.centeredText(font, lines.get(i), cx, y, ModStyle.TEXT);
                     y += font.lineHeight + 2;
                 }
             }
@@ -333,7 +332,7 @@ public class UpdateScreen extends Screen {
      * 「修复客户端」确认页：红三角警告图标 + 红色标题 + 分级警告文案（居中排版）。
      * 按钮（开始修复 红/左、取消 灰/右）由控件系统渲染，坐标见 syncButtons/init。
      */
-    private void renderRepairConfirm(GuiGraphics g, Font font, int cx) {
+    private void renderRepairConfirm(GuiGraphicsExtractor g, Font font, int cx) {
         ModStyle.drawWarning(g, cx, panelY + 60, 30f);
         drawBigCentered(g, font, "修复客户端", cx, panelY + 90, ModStyle.RED, 1.2f);
         drawCentered(g, font, "警告！将会严格将客户端资源与云端对齐，", cx, panelY + 118, ModStyle.TEXT);
@@ -345,7 +344,7 @@ public class UpdateScreen extends Screen {
      * 更新日志滚动区域（纯文本卡片）：标题版本号下方、操作按钮上方，鼠标滚轮上下浏览。
      * 文本用 scissor 裁切在卡片内，右侧细滚动条提示可滚动。
      */
-    private void renderChangelog(GuiGraphics g, Font font, String log) {
+    private void renderChangelog(GuiGraphicsExtractor g, Font font, String log) {
         int lineStep = font.lineHeight + 2;
         int regionX = panelX + 14;
         int regionY = panelY + 62;
@@ -369,7 +368,7 @@ public class UpdateScreen extends Screen {
         g.enableScissor(tx, ty, tx + tw, ty + th);
         int y = ty - (int) Math.round(changelogScroll);
         for (FormattedCharSequence line : lines) {
-            g.drawString(font, line, tx, y, ModStyle.TEXT_DIM);
+            g.text(font, line, tx, y, ModStyle.TEXT_DIM);
             y += lineStep;
         }
         g.disableScissor();
@@ -413,8 +412,8 @@ public class UpdateScreen extends Screen {
         return super.keyPressed(event);
     }
 
-    private void drawCentered(GuiGraphics g, Font font, String text, int cx, int y, int color) {
-        g.drawCenteredString(font, text, cx, y, color);
+    private void drawCentered(GuiGraphicsExtractor g, Font font, String text, int cx, int y, int color) {
+        g.centeredText(font, text, cx, y, color);
     }
 
     /** 按像素宽度截断文字，超出部分用 … 代替（每字符逐一测量，中文/英文都安全）。 */
@@ -452,12 +451,12 @@ public class UpdateScreen extends Screen {
     }
 
     /** 放大字号居中绘制（缩放围绕指定中心点）。 */
-    private void drawBigCentered(GuiGraphics g, Font font, String text, int cx, int y, int color, float scale) {
+    private void drawBigCentered(GuiGraphicsExtractor g, Font font, String text, int cx, int y, int color, float scale) {
         var pose = g.pose();
         pose.pushMatrix();
         pose.translate(cx, y);
         pose.scale(scale, scale);
-        g.drawCenteredString(font, text, 0, 0, color);
+        g.centeredText(font, text, 0, 0, color);
         pose.popMatrix();
     }
 }

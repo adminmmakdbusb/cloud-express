@@ -1,7 +1,7 @@
 package com.speedupdate.gui;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
@@ -60,7 +60,7 @@ public final class ModWidgets {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
             Minecraft mc = Minecraft.getInstance();
             boolean en = enabled.getAsBoolean();
             this.active = en;
@@ -72,11 +72,11 @@ public final class ModWidgets {
             } else {
                 ModStyle.fillRoundedRect(g, x, y, w, h, h / 2, en ? bgColor : 0xFF232A38);
             }
-            if (isHoveredOrFocused() && en) {
+            if (isHovered && en) {
                 ModStyle.fillRoundedRect(g, x, y, w, h, h / 2, ModStyle.BUTTON_HOVER);
             }
             String text = label.get();
-            g.drawCenteredString(mc.font, text, x + w / 2, y + (h - mc.font.lineHeight) / 2,
+            g.centeredText(mc.font, text, x + w / 2, y + (h - mc.font.lineHeight) / 2,
                     en ? textColor.get() : ModStyle.TEXT_DISABLED);
         }
 
@@ -117,14 +117,14 @@ public final class ModWidgets {
         }
 
         @Override
-        protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
             boolean en = enabled.getAsBoolean();
             this.active = en;
             if (en) {
                 // 缩放重载贴整图（裁剪重载会只显示左上角透明区）：10 参 blit
                 g.blit(texture, getX(), getY(), getWidth(), getHeight(), 0f, 0f, 1f, 1f);
             }
-            if (isHoveredOrFocused() && en) {
+            if (isHovered && en) {
                 ModStyle.fillRoundedRect(g, getX(), getY(), getWidth(), getHeight(), getHeight() / 2, ModStyle.BUTTON_HOVER);
             }
         }
