@@ -38,9 +38,9 @@ public class UpdateScreen extends Screen {
     private static final int PANEL_H = 225;
 
     /** 模组图标（jar 内 icon.png，256x256，缩放到 19x19 显示）。 */
-    private static final ResourceLocation ICON = ResourceLocation.fromNamespaceAndPath(SpeedUpdate.MODID, "textures/icon.png");
+    private static final Identifier ICON = Identifier.fromNamespaceAndPath(SpeedUpdate.MODID, "textures/icon.png");
     /** 「修复客户端」按钮图标（assets/speedupdate/textures/xiufu.png，256x256）。 */
-    private static final ResourceLocation XIUFU = ResourceLocation.fromNamespaceAndPath(SpeedUpdate.MODID, "textures/xiufu.png");
+    private static final Identifier XIUFU = Identifier.fromNamespaceAndPath(SpeedUpdate.MODID, "textures/xiufu.png");
 
     private final UpdateEngine engine = new UpdateEngine();
     private boolean checkStarted = false;
