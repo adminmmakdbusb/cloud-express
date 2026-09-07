@@ -1,7 +1,5 @@
 package com.speedupdate.gui;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.math.Axis;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
@@ -99,20 +97,20 @@ public final class ModStyle {
      * 画一条任意角度的细线（完成勾描边动画用）。pose 旋转 + 细矩形模拟线段。
      */
     public static void drawLine(GuiGraphics g, float x1, float y1, float x2, float y2, float width, int color) {
-        PoseStack pose = g.pose();
-        pose.pushPose();
-        pose.translate(x1, y1, 0);
+        var pose = g.pose();
+        pose.pushMatrix();
+        pose.translate(x1, y1);
         float dx = x2 - x1;
         float dy = y2 - y1;
         float len = (float) Math.sqrt(dx * dx + dy * dy);
         if (len < 0.5f) {
-            pose.popPose();
+            pose.popMatrix();
             return;
         }
-        pose.mulPose(Axis.ZP.rotation((float) Math.atan2(dy, dx)));
+        pose.rotate((float) Math.atan2(dy, dx));
         int hw = Math.max(1, (int) Math.ceil(width / 2f));
         g.fill(0, -hw, (int) Math.ceil(len), hw, color);
-        pose.popPose();
+        pose.popMatrix();
     }
 
     /**
