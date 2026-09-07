@@ -7,7 +7,7 @@ import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -98,16 +98,16 @@ public final class ModWidgets {
      * texture 为正方形纹理，texSize 为其实际像素边长（256 等）。
      */
     public static class IconButton extends AbstractWidget {
-        private final ResourceLocation texture;
+        private final Identifier texture;
         private final int texSize;
         private final Runnable onPress;
         private final BooleanSupplier enabled;
 
-        public IconButton(int x, int y, int size, ResourceLocation texture, int texSize, Runnable onPress) {
+        public IconButton(int x, int y, int size, Identifier texture, int texSize, Runnable onPress) {
             this(x, y, size, texture, texSize, onPress, () -> true);
         }
 
-        public IconButton(int x, int y, int size, ResourceLocation texture, int texSize,
+        public IconButton(int x, int y, int size, Identifier texture, int texSize,
                           Runnable onPress, BooleanSupplier enabled) {
             super(x, y, size, size, Component.literal(""));
             this.texture = texture;
