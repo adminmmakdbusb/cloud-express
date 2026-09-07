@@ -5,8 +5,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.function.BooleanSupplier;
@@ -81,7 +81,7 @@ public final class ModWidgets {
         }
 
         @Override
-        public void onClick(double mouseX, double mouseY) {
+        public void onClick(MouseButtonEvent event, boolean isDoubleClick) {
             if (enabled.getAsBoolean()) {
                 onPress.run();
             }
@@ -121,9 +121,8 @@ public final class ModWidgets {
             boolean en = enabled.getAsBoolean();
             this.active = en;
             if (en) {
-                // 1.21.2+：blit 为「RenderType 函数 + 纹理位置」11 参形式（缩放重载贴整图）
-                g.blit(tex -> RenderType.guiTextured(tex), texture, getX(), getY(), getWidth(), getHeight(),
-                        0, 0, texSize, texSize, texSize, texSize);
+                // 缩放重载贴整图（裁剪重载会只显示左上角透明区）：10 参 blit
+                g.blit(texture, getX(), getY(), getWidth(), getHeight(), 0f, 0f, 1f, 1f);
             }
             if (isHoveredOrFocused() && en) {
                 ModStyle.fillRoundedRect(g, getX(), getY(), getWidth(), getHeight(), getHeight() / 2, ModStyle.BUTTON_HOVER);
@@ -131,7 +130,7 @@ public final class ModWidgets {
         }
 
         @Override
-        public void onClick(double mouseX, double mouseY) {
+        public void onClick(MouseButtonEvent event, boolean isDoubleClick) {
             if (enabled.getAsBoolean()) {
                 onPress.run();
             }

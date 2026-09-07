@@ -27,14 +27,14 @@ public class SpeedUpdate {
         LOGGER.info("[云更新] 模组加载开始");
         // 模组加载最早时机（构造方法）：确保目录与 JSON 文件存在。
         // 仅客户端需要这些 .minecraft 目录；服务端安装本模组时跳过。
-        if (FMLEnvironment.dist == Dist.CLIENT) {
+        if (FMLEnvironment.getDist() == Dist.CLIENT) {
             UpdatePaths.ensureDirectories();
         }
         modEventBus.addListener(this::commonSetup);
     }
 
     private void commonSetup(FMLCommonSetupEvent event) {
-        if (FMLEnvironment.dist != Dist.CLIENT) {
+        if (FMLEnvironment.getDist() != Dist.CLIENT) {
             return;
         }
         // 重启后处理待删除任务（删除远程清单中已不存在的旧文件）：游戏在此阶段冻结，等待完成才继续加载。

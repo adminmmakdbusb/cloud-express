@@ -4,14 +4,13 @@ import com.speedupdate.SpeedUpdate;
 import com.speedupdate.update.UpdateEngine;
 import com.speedupdate.update.UpdateEngine.Phase;
 import com.speedupdate.update.UpdatePaths;
-import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.Util;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
@@ -217,9 +216,8 @@ public class UpdateScreen extends Screen {
 
         // 顶栏：模组图标 + 标题 + 本地版本
         try {
-            // 1.21.2+：blit 为「RenderType 函数 + 纹理位置」11 参形式（缩放重载：整张 256x256 等比缩放到 19x19）
-            g.blit(icon -> RenderType.guiTextured(icon), ICON, panelX + 12, panelY + 9, 19, 19,
-                    0, 0, 256, 256, 256, 256);
+            // 缩放重载：整张 256x256 图标等比缩放到 19x19（裁剪重载会只显示左上角透明区导致镂空图案不可见）
+            g.blit(ICON, panelX + 12, panelY + 9, 19, 19, 0f, 0f, 1f, 1f);
         } catch (Exception ignored) {
             // 图标加载失败（极端情况）时仅显示文字标题，不影响功能
         }
@@ -402,8 +400,8 @@ public class UpdateScreen extends Screen {
      * ESC：修复确认页 → 取消确认返回原页；下载中 → 禁止关闭（防打断更新）；其余照常关闭窗口。
      */
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 256) {   // GLFW_KEY_ESCAPE
+    public boolean keyPressed(KeyEvent event) {
+        if (event.key() == 256) {   // GLFW_KEY_ESCAPE
             if (repairConfirming) {
                 closeRepairConfirm();
                 return true;
@@ -412,7 +410,7 @@ public class UpdateScreen extends Screen {
                 return true;
             }
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
 
     private void drawCentered(GuiGraphics g, Font font, String text, int cx, int y, int color) {
@@ -455,11 +453,11 @@ public class UpdateScreen extends Screen {
 
     /** 放大字号居中绘制（缩放围绕指定中心点）。 */
     private void drawBigCentered(GuiGraphics g, Font font, String text, int cx, int y, int color, float scale) {
-        PoseStack pose = g.pose();
-        pose.pushPose();
-        pose.translate(cx, y, 0);
-        pose.scale(scale, scale, 1f);
+        var pose = g.pose();
+        pose.pushMatrix();
+        pose.translate(cx, y);
+        pose.scale(scale, scale);
         g.drawCenteredString(font, text, 0, 0, color);
-        pose.popPose();
+        pose.popMatrix();
     }
 }
