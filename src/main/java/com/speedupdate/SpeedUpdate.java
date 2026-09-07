@@ -29,6 +29,7 @@ public class SpeedUpdate {
         // 仅客户端需要这些 .minecraft 目录；服务端安装本模组时跳过。
         if (FMLEnvironment.dist == Dist.CLIENT) {
             UpdatePaths.ensureDirectories();
+            SpeedUpdateClient.register(modEventBus);   // 1.20.1 老 FML：手动挂载客户端初始化
         }
         modEventBus.addListener(this::commonSetup);
     }

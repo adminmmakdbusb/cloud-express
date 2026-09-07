@@ -7,28 +7,23 @@ import com.speedupdate.update.UpdateNetwork;
 import com.speedupdate.update.UpdatePaths;
 import com.speedupdate.update.UpdateStatus;
 import com.speedupdate.update.VersionNumber;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.ModContainer;
-import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.fml.common.Mod;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * 客户端入口。
- * 本类不会在专用服务端加载，访问客户端代码是安全的。
+ * 客户端入口（1.20.1 老 FML：无 @Mod(dist)/@EventBusSubscriber，由主类在 CLIENT 环境手动注册；
+ * 本类引用均不含客户端专属 GUI 类，双端可安全加载）。
  */
-@Mod(value = SpeedUpdate.MODID, dist = Dist.CLIENT)
-@EventBusSubscriber(modid = SpeedUpdate.MODID, value = Dist.CLIENT)
 public class SpeedUpdateClient {
 
-    public SpeedUpdateClient(ModContainer container) {
+    /** 主类在 dist==CLIENT 时调用：把客户端初始化挂到 mod 事件总线。 */
+    public static void register(IEventBus modEventBus) {
+        modEventBus.addListener(SpeedUpdateClient::onClientSetup);
     }
 
-    @SubscribeEvent
     static void onClientSetup(FMLClientSetupEvent event) {
         SpeedUpdate.LOGGER.info("[云更新] 客户端初始化完成，主界面将显示「检查更新」按钮");
         startSilentVersionCheck();
