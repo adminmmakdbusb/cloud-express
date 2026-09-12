@@ -58,6 +58,7 @@ import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import sys
 import threading
@@ -122,12 +123,12 @@ ADMIN_SESSION_TTL = 24 * 3600                 # 登录状态有效期（秒）
 ADMIN_LOGIN_MAX_FAIL = 5                      # 同一 IP 连续失败上限
 ADMIN_LOGIN_LOCK_SEC = 300                    # 达到上限后的锁定时长（秒）
 ADMIN_MAX_UPLOAD = 4 * 1024 * 1024 * 1024     # 单文件上传上限（4 GB）
-ADMIN_BODY_TIMEOUT = 60.0                     # HTTP 请求体读写 socket 超时（秒）
+ADMIN_BODY_TIMEOUT = 20.0                     # HTTP 请求体读写 socket 超时（秒）
 ADMIN_LOG_PAGE_LINES = 300                    # 日志接口单次返回的最大行数
 ADMIN_COOKIE_NAME = "ce_sid"                  # 会话 Cookie 名
 ADMIN_RELOAD_STEPS = ("重读 speedupdate.conf 配置", "检查分发目录与 Changelog.txt",
                       "执行文件重命名（_v<版本>_ZAKO）", "重建哈希清单", "完成")
-ADMIN_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')     # 文件名非法字符（Windows 语义）
+ADMIN_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f\u202a-\u202e\u2066-\u2069]')  # 非法字符 + bidi 控制符
 ADMIN_WIN_RESERVED = frozenset(
     ["CON", "PRN", "AUX", "NUL"] + ["COM%d" % i for i in range(1, 10)] + ["LPT%d" % i for i in range(1, 10)]
 )
@@ -632,6 +633,9 @@ const API = {
                 if (!r.ok) throw { code: r.status, error: data.error || ('请求失败（HTTP ' + r.status + '）') };
                 return data;
             });
+        }).catch(function (err) {
+            if (err && err.code) throw err;
+            throw { code: 0, error: '网络错误或服务端未响应，请检查服务端是否在运行' };
         });
     },
     get: function (p) { return API.request(p); },
@@ -791,7 +795,6 @@ function loadState(silent) {
 $('#refreshBtn').onclick = function () {
     loadState(true).then(function () { toast('状态已刷新'); }, function () {});
 };
-const RELOAD_STEP_NAMES = ['重读 speedupdate.conf 配置', '检查分发目录与 Changelog.txt', '执行文件重命名', '重建哈希清单', '完成'];
 function renderReloadSteps(steps) {
     const box = $('#reloadSteps');
     box.classList.remove('hidden');
@@ -817,7 +820,8 @@ $('#reloadBtn').onclick = function () {
                     if (d.error) {
                         toast('重新加载失败：' + d.error, 'error');
                     } else if (d.result) {
-                        toast('重新加载完成：清单 ' + d.result.manifestCount + ' 个文件，耗时 ' + d.result.elapsedSec.toFixed(2) + ' 秒');
+                        toast('重新加载完成：清单 ' + d.result.manifestCount + ' 个文件，耗时 ' + d.result.elapsedSec.toFixed(2) + ' 秒' +
+                            (d.result.renamed === undefined ? '' : '（改名 ' + d.result.renamed + '，跳过 ' + d.result.skipped + '，失败 ' + d.result.failed + '）'));
                         loadState(true);
                     } else {
                         toast('重新加载已结束', 'warn');
@@ -943,10 +947,18 @@ fileInput.onchange = function () { handleFiles(this.files); this.value = ''; };
 });
 dropZone.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files); });
 
+const WIN_RESERVED = ['CON', 'PRN', 'AUX', 'NUL'];
+for (let ri = 1; ri <= 9; ri++) { WIN_RESERVED.push('COM' + ri); WIN_RESERVED.push('LPT' + ri); }
+const MAX_UPLOAD = 4 * 1024 * 1024 * 1024;
 function validateLocalName(name, kind) {
     if (!name) return '文件名不能为空';
-    if (/[\\/:*?"<>|]/.test(name)) return '文件名不能包含 \\ / : * ? " < > | 字符';
     if (name.length > 200) return '文件名过长（最多 200 字符）';
+    if (/[\\/:*?"<>|\u0000-\u001f\u202a-\u202e]/.test(name)) return '文件名不能包含 \\ / : * ? " < > | 等特殊字符';
+    if (name.startsWith('.')) return '文件名不能以点开头';
+    if (name.endsWith('.') || name.endsWith(' ')) return '文件名不能以点或空格结尾';
+    const dot = name.lastIndexOf('.');
+    const stem = (dot > 0 ? name.slice(0, dot) : name).trim().toUpperCase();
+    if (WIN_RESERVED.indexOf(stem) >= 0) return '文件名不合法（Windows 保留名）';
     const ext = kind === 'mods' ? '.jar' : '.zip';
     if (!name.toLowerCase().endsWith(ext)) return kind + ' 目录只接受 ' + ext + ' 文件';
     return '';
@@ -955,6 +967,7 @@ function handleFiles(fileList) {
     Array.prototype.slice.call(fileList).forEach(function (f) {
         const err = validateLocalName(f.name, state.kind);
         if (err) { toast(f.name + '：' + err, 'error'); return; }
+        if (f.size > MAX_UPLOAD) { toast(f.name + '：文件超过 4 GB 上限，无法上传', 'error'); return; }
         const exist = state.files.filter(function (x) { return x.name === f.name; })[0];
         if (exist) askOverwrite(f, exist);
         else startUpload(f, false);
@@ -1007,8 +1020,10 @@ function startUpload(file, overwrite) {
                 const ex = (dd.files || []).filter(function (x) { return x.name === file.name; })[0] || { name: file.name, size: 0 };
                 askOverwrite(file, ex);
             }, function () { toast('云端已存在同名文件', 'error'); });
+        } else if (xhr.status === 413) {
+            item.status = '文件过大'; item.failed = true; renderQueue();
+            toast(file.name + '：超过服务端 4 GB 上限，已拒绝', 'error');
         } else {
-            item.status = d.error || '上传失败';
             item.failed = true;
             renderQueue();
             toast(file.name + '：' + (d.error || '上传失败'), 'error');
@@ -1146,7 +1161,10 @@ $('#saveVersionBtn').onclick = function () {
     btn.disabled = true;
     API.post('/api/version', { version: v, changelog: changelog, rename: rename }).then(function (d) {
         btn.disabled = false;
-        if (d.background) {
+        if (d.warning) {
+            toast(d.warning, 'warn');
+            loadVersion();
+        } else if (d.background) {
             toast('版本号已保存，正在后台同步文件尾缀并重建清单…', 'warn');
             watchRebuild();
         } else {
@@ -1874,8 +1892,8 @@ def handle_get_file(sock, peer, rel, download_sem):
 def handle_connection(conn, addr, cfg, download_sem, pending_sem):
     """处理单条连接：读首行 -> GET_ 指令路由。全程异常兜底并记录。"""
     peer = "%s:%s" % (addr[0], addr[1])
-    _record_client(addr[0])   # 今日连接统计（管理端概览用；一个 IP 一天只计一次）
     try:
+        _record_client(addr[0])   # 今日连接统计（管理端概览用；一个 IP 一天只计一次）
         try:
             conn.settimeout(CONNECT_READ_TIMEOUT)
             first = recv_line(conn)
@@ -2081,9 +2099,11 @@ def _login_failed(ip):
     """记录一次失败，返回该 IP 的连续失败次数。"""
     now = time.time()
     with _LOGIN_LOCK:
-        if len(_LOGIN_FAILS) > 512:      # 防止大量来源 IP 撑爆内存
-            for k in [k for k, v in _LOGIN_FAILS.items() if (not v[1]) or v[1] <= now]:
+        if len(_LOGIN_FAILS) > 512:      # 只清理"锁定已过期"的条目，避免削弱限速
+            for k in [k for k, v in _LOGIN_FAILS.items() if v[1] and v[1] <= now]:
                 _LOGIN_FAILS.pop(k, None)
+            while len(_LOGIN_FAILS) > 4096:   # 极端情况丢弃最早记录，保护内存
+                _LOGIN_FAILS.pop(next(iter(_LOGIN_FAILS)), None)
         rec = _LOGIN_FAILS.get(ip)
         if rec is None or (rec[1] and rec[1] <= now):
             rec = [0, 0.0]
@@ -2113,7 +2133,7 @@ def _record_client(ip):
             _STATS["ips"] = set()
             _STATS["conns"] = 0
         _STATS["conns"] += 1
-        if ip:
+        if ip and len(_STATS["ips"]) < 100000:
             _STATS["ips"].add(ip)
 
 
@@ -2125,13 +2145,17 @@ def _stats_snapshot():
         return {"ips": len(_STATS["ips"]), "conns": _STATS["conns"]}
 
 
+_LAST_REBUILD_LOCK = threading.Lock()
+
+
 def _mark_rebuild(t0=None, count=None):
     """记录最近一次清单重建的时间与耗时（管理端展示用）。"""
-    _LAST_REBUILD["at"] = datetime.now().strftime("%H:%M:%S")
-    if t0 is not None:
-        _LAST_REBUILD["sec"] = max(0.0, time.time() - t0)
-    if count is not None:
-        _LAST_REBUILD["count"] = count
+    with _LAST_REBUILD_LOCK:
+        _LAST_REBUILD["at"] = datetime.now().strftime("%H:%M:%S")
+        if t0 is not None:
+            _LAST_REBUILD["sec"] = max(0.0, time.time() - t0)
+        if count is not None:
+            _LAST_REBUILD["count"] = count
 
 
 # ---------- 后台任务：重建清单 / 完整重载（同一时刻只允许一个） ----------
@@ -2175,7 +2199,13 @@ def start_task(kind="rebuild"):
             return False
         _TASK.update({"running": True, "kind": kind, "steps": _task_steps(kind),
                       "error": None, "result": None, "started": time.time()})
-    threading.Thread(target=_run_task, args=(kind,), name="管理端任务", daemon=True).start()
+    try:
+        threading.Thread(target=_run_task, args=(kind,), name="管理端任务", daemon=True).start()
+    except Exception:
+        with _TASK_LOCK:
+            _TASK["running"] = False
+        error(C_RED, "管理端", "无法启动后台任务线程（%s）" % kind)
+        return False
     return True
 
 
@@ -2198,6 +2228,7 @@ def _ensure_dist_dirs():
 
 def _run_task(kind):
     """后台执行：rebuild = 只重建清单；reload = 重跑启动流程 + 重建清单。"""
+    rename_stat = (0, 0, 0, 0)
     try:
         cfg = _RUNTIME.get("cfg") or {}
         if kind == "reload":
@@ -2218,7 +2249,7 @@ def _run_task(kind):
 
             _task_set_step(2, "doing")
             try:
-                startup_rename(cfg.get("version", DEFAULT_VERSION))
+                rename_stat = startup_rename(cfg.get("version", DEFAULT_VERSION)) or (0, 0, 0, 0)
             except Exception:
                 error(C_RED, "管理端", "重载时自动重命名失败")
             _task_set_step(2, "done")
@@ -2238,7 +2269,8 @@ def _run_task(kind):
             _mark_rebuild(t0, INDEX.count())
             _task_set_step(0, "done")
 
-        result = {"manifestCount": INDEX.count(), "elapsedSec": sec, "at": _LAST_REBUILD["at"]}
+        result = {"manifestCount": INDEX.count(), "elapsedSec": sec, "at": _LAST_REBUILD["at"],
+                  "renamed": rename_stat[1], "skipped": rename_stat[2], "failed": rename_stat[3]}
         with _TASK_LOCK:
             _TASK["result"] = result
         detail("管理端", "后台任务完成（%s）：清单 %d 个文件，耗时 %.2f 秒"
@@ -2247,6 +2279,9 @@ def _run_task(kind):
         error(C_RED, "管理端", "后台任务失败（%s）：%s" % (kind, e))
         with _TASK_LOCK:
             _TASK["error"] = "任务执行失败：%s" % e
+            for _s in _TASK["steps"]:
+                if _s["state"] == "doing":
+                    _s["state"] = "fail"
     finally:
         with _TASK_LOCK:
             _TASK["running"] = False
@@ -2318,6 +2353,22 @@ def _safe_remove(path):
         pass
 
 
+def _cleanup_upload_tmp():
+    """启动时清理上次异常退出残留的上传临时文件（*.part）。"""
+    try:
+        if not os.path.isdir(ADMIN_UPLOAD_TMP):
+            return
+        n = 0
+        for fn in os.listdir(ADMIN_UPLOAD_TMP):
+            if fn.endswith(".part"):
+                _safe_remove(os.path.join(ADMIN_UPLOAD_TMP, fn))
+                n += 1
+        if n:
+            detail("管理端", "已清理 %d 个残留上传临时文件" % n)
+    except OSError:
+        pass
+
+
 def _replace_file(src, dst, attempts=3, delay=0.4):
     """把临时文件原子替换到目标位置；Windows 上目标被下载占用时重试。"""
     last_err = ""
@@ -2347,12 +2398,24 @@ def _is_ipv4(s):
 
 
 # ---------- 配置文件写回（保留注释与顺序，原子替换） ----------
+_CONFIG_WRITE_LOCK = threading.RLock()
+
+
 def write_config_values(updates):
+    """按行改写 speedupdate.conf（串行化 + 原子替换，避免并发保存互相覆盖）。"""
+    with _CONFIG_WRITE_LOCK:
+        return _write_config_values_inner(updates)
+
+
+def _write_config_values_inner(updates):
     """按行改写 speedupdate.conf：已存在的键就地替换，缺失的键追加到末尾。
 
     返回 {键: 旧值}（用于判断哪些项发生了变化）。写入使用临时文件 + 原子替换，
     避免写一半导致配置文件损坏。
     """
+    for _k, _v in updates.items():
+        if "\r" in str(_v) or "\n" in str(_v):
+            raise ApiError(400, "配置项 %s 的值不能包含换行符" % _k)
     ensure_config_file()
     try:
         with open(CONFIG_FILE, "rb") as f:
@@ -2378,7 +2441,7 @@ def write_config_values(updates):
         if k not in seen:
             lines.append("%s=%s" % (k, v))
     data = newline.join(lines) + newline
-    tmp = CONFIG_FILE + ".tmp"
+    tmp = CONFIG_FILE + "." + uuid.uuid4().hex + ".tmp"
     try:
         with open(tmp, "wb") as f:
             if has_bom:
@@ -2393,11 +2456,16 @@ def write_config_values(updates):
 
 
 def write_changelog(text):
-    """写入 Changelog.txt（UTF-8 无 BOM，LF 换行）。"""
+    """写入 Changelog.txt（UTF-8 无 BOM，LF 换行；临时文件 + 原子替换）。"""
+    tmp = CHANGELOG_FILE + "." + uuid.uuid4().hex + ".tmp"
     try:
-        with open(CHANGELOG_FILE, "w", encoding="utf-8", newline="\n") as f:
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CHANGELOG_FILE)
     except OSError as e:
+        _safe_remove(tmp)
         raise ApiError(500, "写入 Changelog.txt 失败：%s" % e)
 
 
@@ -2410,8 +2478,14 @@ def tail_log_file(path, offset):
         return {"lines": [], "offset": 0, "size": 0, "reset": True}
     try:
         if offset <= 0 or offset > size:
+            start = max(0, size - 512 * 1024)      # 只读尾部 512KB，避免大日志整文件读入
             with open(path, "rb") as f:
+                if start:
+                    f.seek(start)
                 data = f.read()
+            if start:
+                cut = data.find(b"\n")             # 丢弃可能被截断的首行
+                data = data[cut + 1:] if cut >= 0 else b""
             lines = data.decode("utf-8", "replace").splitlines()
             return {"lines": lines[-ADMIN_LOG_PAGE_LINES:], "offset": size, "size": size, "reset": True}
         with open(path, "rb") as f:
@@ -2448,6 +2522,9 @@ def build_state():
     files["total"] = files["mods"] + files["shaderpacks"] + files["resourcepacks"]
     files["bytes"] = total_bytes
     stats = _stats_snapshot()
+    with _LAST_REBUILD_LOCK:
+        last_at = _LAST_REBUILD["at"]
+        last_sec = _LAST_REBUILD["sec"]
     maxdl = int(cfg.get("max_downloads", DEFAULT_MAX_DOWNLOADS) or DEFAULT_MAX_DOWNLOADS)
     return {
         "version": cfg.get("version", DEFAULT_VERSION),
@@ -2460,8 +2537,8 @@ def build_state():
         "adminPort": cfg.get("admin_port", DEFAULT_ADMIN_PORT),
         "files": files,
         "manifestCount": INDEX.count(),
-        "lastRebuild": _LAST_REBUILD["at"],
-        "lastRebuildSec": _LAST_REBUILD["sec"],
+        "lastRebuild": last_at,
+        "lastRebuildSec": last_sec,
         "todayIps": stats["ips"],
         "todayConns": stats["conns"],
         "uptimeSec": int(time.time() - _START_TS),
@@ -2541,6 +2618,17 @@ class AdminHandler(BaseHTTPRequestHandler):
                 return v.strip()
         return ""
 
+    def _same_origin_ok(self):
+        """CSRF 纵深防御：跨站发起的写请求一律拒绝（SameSite 之外再加一层）。"""
+        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return False
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:
+            return True          # 非浏览器客户端（脚本/curl）不带 Origin，由会话鉴权把关
+        host = (self.headers.get("Host") or "").strip().lower()
+        return origin.lower() in ("http://" + host, "https://" + host)
+
     def _read_json_body(self, limit=65536):
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -2573,23 +2661,14 @@ class AdminHandler(BaseHTTPRequestHandler):
         self._dispatch("GET")
 
     def do_PUT(self):
-        self._send_error_json(405, "不支持的请求方法")
+        self._send_bytes(405, _json_bytes({"error": "不支持的请求方法"}),
+                         "application/json; charset=utf-8", [("Allow", "GET, POST, HEAD")])
 
     do_DELETE = do_PATCH = do_OPTIONS = do_PUT
 
     def _dispatch(self, method):
-        """并发保护：被大量请求/慢连接冲击时保护内存与线程数。"""
-        if not _ADMIN_CONN_SEM.acquire(blocking=False):
-            self.close_connection = True
-            try:
-                self._send_error_json(503, "管理端连接数已达上限，请稍后重试")
-            except Exception:
-                pass
-            return
-        try:
-            self._dispatch_inner(method)
-        finally:
-            _ADMIN_CONN_SEM.release()
+        """连接数已在服务器 accept 阶段用信号量限流（见 _AdminHTTPServer.process_request）。"""
+        self._dispatch_inner(method)
 
     def _dispatch_inner(self, method):
         try:
@@ -2612,6 +2691,10 @@ class AdminHandler(BaseHTTPRequestHandler):
                     self._send_error_json(401, "未登录或登录状态已过期")
                 else:
                     self._redirect("/login")
+                return
+
+            if method == "POST" and not self._same_origin_ok():
+                self._send_error_json(403, "请求来源校验失败")
                 return
 
             # ---- 已登录：业务路由 ----
@@ -2656,6 +2739,14 @@ class AdminHandler(BaseHTTPRequestHandler):
             else:
                 self._send_error_json(404, "接口不存在")
         except ApiError as e:
+            # 若请求体尚未读取（上传/登录等提前拒绝），必须关闭连接，
+            # 否则残留字节会被 keep-alive 当成下一个请求解析，造成响应错位。
+            try:
+                _has_body = int(self.headers.get("Content-Length") or 0) > 0
+            except ValueError:
+                _has_body = True
+            if _has_body:
+                self.close_connection = True
             self._send_error_json(e.code, e.message)
         except (BrokenPipeError, ConnectionError, socket.timeout):
             pass
@@ -2704,8 +2795,8 @@ class AdminHandler(BaseHTTPRequestHandler):
         full, rel = safe_file_path(kind, name)
         if not os.path.isfile(full):
             raise ApiError(404, "文件不存在")
-        size = os.path.getsize(full)
         if self.command == "HEAD":
+            size = os.path.getsize(full)
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(size))
@@ -2713,6 +2804,12 @@ class AdminHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
+            f = open(full, "rb")
+        except OSError as e:
+            raise ApiError(404, "文件无法读取：%s" % e)
+        try:
+            # 先打开再取长度，避免 getsize 与 open 之间文件被替换导致长度不符
+            size = os.fstat(f.fileno()).st_size
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Length", str(size))
@@ -2721,18 +2818,24 @@ class AdminHandler(BaseHTTPRequestHandler):
             self._security_headers()
             self.end_headers()
             sent = 0
-            with open(full, "rb") as f:
-                while True:
-                    chunk = f.read(FILE_SEND_CHUNK)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    sent += len(chunk)
+            while True:
+                chunk = f.read(FILE_SEND_CHUNK)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                sent += len(chunk)
             admin_log("下载文件", "%s（%d 字节）" % (rel, sent), self._client_ip())
         except (BrokenPipeError, ConnectionError, socket.timeout):
+            self.close_connection = True
             warn(C_YELLOW, "管理端", "管理端下载中断：%s" % rel)
         except OSError as e:
+            self.close_connection = True
             error(C_RED, "管理端", "管理端下载失败 %s：%s" % (rel, e))
+        finally:
+            try:
+                f.close()
+            except OSError:
+                pass
 
     # ---- 上传（原始字节流，非 multipart） ----
     def _handle_upload(self, query, ip):
@@ -2747,11 +2850,21 @@ class AdminHandler(BaseHTTPRequestHandler):
         if length <= 0:
             raise ApiError(411, "缺少 Content-Length（请通过管理端页面上传）")
         if length > ADMIN_MAX_UPLOAD:
-            self.close_connection = True
+            self._discard_body(length)
             raise ApiError(413, "文件过大（上限 %d MB）" % (ADMIN_MAX_UPLOAD // 1048576))
+        if os.path.isdir(full):
+            self._discard_body(length)
+            raise ApiError(409, "目标位置存在同名目录，无法上传")
+        try:
+            free = shutil.disk_usage(SCRIPT_DIR).free
+            if free < length + 64 * 1024 * 1024:
+                self._discard_body(length)
+                raise ApiError(507, "服务器磁盘剩余空间不足（剩余 %d MB）" % (free // 1048576))
+        except OSError:
+            pass
         exists = os.path.isfile(full)
         if exists and not overwrite:
-            self.close_connection = True
+            self._discard_body(length)
             raise ApiError(409, "云端已存在同名文件")
         try:
             os.makedirs(ADMIN_UPLOAD_TMP, exist_ok=True)
@@ -2785,6 +2898,27 @@ class AdminHandler(BaseHTTPRequestHandler):
                   "%s（%d 字节，sha1=%s）" % (rel, got, sha.hexdigest()), ip)
         start_task("rebuild")
         self._send_json(200, {"ok": True, "size": got, "sha": sha.hexdigest(), "overwritten": exists})
+
+    def _discard_body(self, length, limit=64 * 1024 * 1024):
+        """尽量读掉请求体，避免 keep-alive 下残留字节污染后续请求。
+
+        body 过大（超过 limit）时放弃读取并关闭连接——客户端仍在发送，
+        继续读取只会白白消耗带宽与磁盘。
+        """
+        if length <= 0:
+            return
+        if length > limit:
+            self.close_connection = True
+            return
+        remaining = length
+        try:
+            while remaining > 0:
+                chunk = self.rfile.read(min(FILE_SEND_CHUNK, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+        except (OSError, socket.timeout):
+            self.close_connection = True
 
     # ---- 改名 / 删除 ----
     def _handle_rename(self, ip):
@@ -2840,7 +2974,9 @@ class AdminHandler(BaseHTTPRequestHandler):
         changelog = read_changelog() if changelog is None else str(changelog).replace("\r\n", "\n")
         if len(changelog) > 20000:
             raise ApiError(400, "更新日志过长（上限 20000 字符）")
-        do_rename = bool(data.get("rename"))
+        do_rename = data.get("rename") is True
+        if do_rename and _task_running():
+            raise ApiError(409, "已有后台任务正在执行，请稍候再试")
         old = write_config_values({"version": version})
         write_changelog(changelog)
         self._cfg()["version"] = version
@@ -2848,8 +2984,11 @@ class AdminHandler(BaseHTTPRequestHandler):
                                                 "（同步文件尾缀）" if do_rename else ""), ip)
         admin_log("保存更新日志", "%d 字符" % len(changelog), ip)
         if do_rename:
-            start_task("reload")
-            self._send_json(200, {"ok": True, "background": True, "version": version})
+            started = start_task("reload")
+            payload = {"ok": True, "background": started, "version": version}
+            if not started:
+                payload["warning"] = "后台任务繁忙，文件尾缀未同步；请稍后点击「重新加载」"
+            self._send_json(200, payload)
             return
         self._send_json(200, {"ok": True, "renamed": 0, "manifestCount": INDEX.count(),
                               "elapsedSec": 0.0, "version": version})
@@ -2892,6 +3031,8 @@ class AdminHandler(BaseHTTPRequestHandler):
         feedback = str(data.get("feedback_url") or "").strip()
         if not feedback.startswith(("http://", "https://")):
             raise ApiError(400, "反馈链接必须以 http:// 或 https:// 开头")
+        if "\r" in feedback or "\n" in feedback or len(feedback) > 500:
+            raise ApiError(400, "反馈链接不合法（不能含换行，长度不超过 500）")
         try:
             admin_port = int(data.get("admin_port"))
         except (TypeError, ValueError):
@@ -2942,6 +3083,8 @@ class AdminHandler(BaseHTTPRequestHandler):
     # ---- 日志 ----
     def _handle_logs(self, query):
         which = (query.get("which") or ["run"])[0]
+        if which not in ("run", "admin"):
+            raise ApiError(400, "未知日志类型：%s" % which)
         path = LOG_FILE if which == "run" else ADMIN_AUDIT_FILE
         try:
             offset = int((query.get("offset") or ["0"])[0])
@@ -2960,8 +3103,30 @@ _ADMIN_CONN_SEM = threading.BoundedSemaphore(ADMIN_MAX_PENDING)
 
 
 class _AdminHTTPServer(ThreadingHTTPServer):
+    """管理端 HTTP 服务器：连接数在 accept 阶段就受信号量约束（含只连不发的空连接）。"""
+
     daemon_threads = True
     allow_reuse_address = True
+
+    def process_request(self, request, client_address):
+        if not _ADMIN_CONN_SEM.acquire(blocking=False):
+            try:
+                request.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            self.close_request(request)
+            return
+        try:
+            ThreadingHTTPServer.process_request(self, request, client_address)
+        except Exception:
+            _ADMIN_CONN_SEM.release()
+            raise
+
+    def shutdown_request(self, request):
+        try:
+            ThreadingHTTPServer.shutdown_request(self, request)
+        finally:
+            _ADMIN_CONN_SEM.release()
 
     def handle_error(self, request, client_address):
         detail("管理端", "HTTP 连接异常：%s" % (client_address,))
@@ -2989,6 +3154,7 @@ def start_admin_server(cfg):
         return []
     bind_v4 = cfg.get("bind_v4", DEFAULT_BIND_V4) or "0.0.0.0"
     init_admin_log()
+    _cleanup_upload_tmp()
     targets = [(_AdminHTTPServer, bind_v4, "IPv4", C_RED)]
     if cfg.get("enable_v6"):
         targets.append((_AdminHTTPServerV6, "::", "IPv6", C_YELLOW))
