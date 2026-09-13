@@ -6,6 +6,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -33,6 +34,8 @@ public final class ModWidgets {
         private final boolean bordered;
         private final Runnable onPress;
         private final BooleanSupplier enabled;
+        /** 右键回调：为 null 时右键不做任何事（与旧行为完全一致）。 */
+        private Runnable onRightPress;
 
         public ActionButton(int x, int y, int w, int h, String label, int bgColor, int textColor, Runnable onPress) {
             this(x, y, w, h, label, bgColor, textColor, onPress, () -> true);
@@ -80,8 +83,27 @@ public final class ModWidgets {
                     en ? textColor.get() : ModStyle.TEXT_DISABLED);
         }
 
+        /** 挂载右键回调（链式调用；未设置时右键不产生任何行为）。 */
+        public ActionButton onRightClick(Runnable action) {
+            this.onRightPress = action;
+            return this;
+        }
+
+        @Override
+        protected boolean isValidClickButton(MouseButtonInfo buttonInfo) {
+            return buttonInfo.button() == 0 || (buttonInfo.button() == 1 && onRightPress != null);
+        }
+
         @Override
         public void onClick(MouseButtonEvent event, boolean isDoubleClick) {
+            // 右键走独立回调（未设置右键回调时行为与以前完全一致）
+            if (event.button() == 1) {
+                if (onRightPress != null && enabled.getAsBoolean()) {
+                    playButtonClickSound(Minecraft.getInstance().getSoundManager());
+                    onRightPress.run();
+                }
+                return;
+            }
             if (enabled.getAsBoolean()) {
                 onPress.run();
             }
