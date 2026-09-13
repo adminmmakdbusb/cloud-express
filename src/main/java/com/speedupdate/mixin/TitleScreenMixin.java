@@ -2,6 +2,7 @@ package com.speedupdate.mixin;
 
 import com.speedupdate.gui.ModStyle;
 import com.speedupdate.gui.ModWidgets;
+import com.speedupdate.gui.ServerSettingsScreen;
 import com.speedupdate.gui.UpdateScreen;
 import com.speedupdate.update.UpdateStatus;
 import net.minecraft.client.Minecraft;
@@ -67,6 +68,8 @@ public abstract class TitleScreenMixin extends Screen {
                 ModStyle.BUTTON_BG,
                 () -> UpdateStatus.newVersionAvailable ? ModStyle.GREEN : ModStyle.TEXT,
                 true,
-                () -> Minecraft.getInstance().setScreen(new UpdateScreen()), () -> true));
+                () -> Minecraft.getInstance().setScreen(new UpdateScreen()), () -> true)
+                // 右键 = 隐藏的「更新服务器」设置入口（刻意不做可见按钮与悬停提示）
+                .onRightClick(() -> Minecraft.getInstance().setScreen(new ServerSettingsScreen(this))));
     }
 }
