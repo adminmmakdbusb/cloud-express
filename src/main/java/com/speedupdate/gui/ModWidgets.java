@@ -33,6 +33,8 @@ public final class ModWidgets {
         private final boolean bordered;
         private final Runnable onPress;
         private final BooleanSupplier enabled;
+        /** 右键回调：为 null 时右键不做任何事（与旧行为完全一致）。 */
+        private Runnable onRightPress;
 
         public ActionButton(int x, int y, int w, int h, String label, int bgColor, int textColor, Runnable onPress) {
             this(x, y, w, h, label, bgColor, textColor, onPress, () -> true);
@@ -78,6 +80,24 @@ public final class ModWidgets {
             String text = label.get();
             g.drawCenteredString(mc.font, text, x + w / 2, y + (h - mc.font.lineHeight) / 2,
                     en ? textColor.get() : ModStyle.TEXT_DISABLED);
+        }
+
+        /** 挂载右键回调（链式调用；未设置时右键不产生任何行为）。 */
+        public ActionButton onRightClick(Runnable action) {
+            this.onRightPress = action;
+            return this;
+        }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            // 只额外处理右键；其余情况完全交给父类默认逻辑（既有行为不变）
+            if (button == 1 && onRightPress != null && this.active && this.visible
+                    && enabled.getAsBoolean() && this.isMouseOver(mouseX, mouseY)) {
+                playDownSound(Minecraft.getInstance().getSoundManager());
+                onRightPress.run();
+                return true;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
         }
 
         @Override
